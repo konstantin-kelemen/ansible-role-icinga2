@@ -1,6 +1,8 @@
 ---
+icinga2_mysql_privileged_user: root
+icinga2_mysql_privileged_password: "{{ mysql_root_pass }}"
 icinga2_db_host: localhost
 icinga2_db_name: icinga2
 icinga2_db_user: icinga2
 icinga2_db_password: iloveicinga
-icinga2_zonename: master
+icinga2_master_zone_name: master

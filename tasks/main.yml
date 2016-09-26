@@ -26,43 +26,48 @@
 - name: Enable icinga2 service
   service: name=icinga2 state=started enabled=yes
 
-# START: This should be moved away from this role
 - name: Create Icinga2 database
-  mysql_db: name={{ icinga2_db_name }} state=present
+  mysql_db:
+    login_user: "{{ icinga2_mysql_privileged_user }}"
+    login_password: "{{ icinga2_mysql_privileged_password }}"
+    login_host: "{{ icinga2_db_host }}"
+    name: "{{ icinga2_db_name }}"
+    state: present
   run_once: true
-  delegate_to: "{{ percona_cluster_bootstrap_hostname }}"
 
 - name: Create Icinga2 user and give him propper privileges (remote)
   mysql_user:
+    login_user: "{{ icinga2_mysql_privileged_user }}"
+    login_password: "{{ icinga2_mysql_privileged_password }}"
+    login_host: "{{ icinga2_db_host }}"
     name: "{{ icinga2_db_user }}"
     password: "{{ icinga2_db_password }}"
     priv: "{{ icinga2_db_name }}.*:ALL"
-    state: present
     host: "{{ hostvars[item]['ansible_ssh_host'] }}"
+    state: present
   with_items: "{{ groups['master'] }}"
   run_once: true
-  delegate_to: "{{ percona_cluster_bootstrap_hostname }}"
 
 - name: Create Icinga2 user and give him propper privileges (local)
   mysql_user:
+    login_user: "{{ icinga2_mysql_privileged_user }}"
+    login_password: "{{ icinga2_mysql_privileged_password }}"
+    login_host: "{{ icinga2_db_host }}"
     name: "{{ icinga2_db_user }}"
     password: "{{ icinga2_db_password }}"
     priv: "{{ icinga2_db_name }}.*:ALL"
     state: present
   run_once: true
-  delegate_to: "{{ percona_cluster_bootstrap_hostname }}"
-# END: This should be moved away from this role
 
-- name: Import database structure
+- name: Import "{{ icinga2_db_name }}" database structure
   mysql_db:
-    state: import
     login_user: "{{ icinga2_db_user }}"
     login_password: "{{ icinga2_db_password }}"
-    login_host: "{{ percona_cluster_bootstrap_hostname }}"
+    login_host: "{{ icinga2_db_host }}"
     name: "{{ icinga2_db_name }}"
     target: /usr/share/icinga2-ido-mysql/schema/mysql.sql
+    state: import
   run_once: true
-  delegate_to: "{{ hostvars[groups['master'][0]]['inventory_hostname'] }}"
 
 - name: Enable command feature
   shell: icinga2 feature enable command
@@ -71,7 +76,7 @@
   lineinfile: dest=/etc/icinga2/constants.conf regexp="^//const NodeName" line="const NodeName = "{{ inventory_hostname }}""
 
 - name: Update ZoneName in constants.conf
-  lineinfile: dest=/etc/icinga2/constants.conf regexp="^const ZoneName" line="const ZoneName = "{{ icinga2_zonename }}""
+  lineinfile: dest=/etc/icinga2/constants.conf regexp="^const ZoneName" line="const ZoneName = "{{ icinga2_master_zone_name }}""
 
 - name: Update user in ido-mysql.conf
   lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^  //user" line="  user = "{{ icinga2_db_user }}""
@@ -97,15 +102,15 @@
       Bind Host: ""
       Bind Port: ""
 
-- name: Update ZoneName in constants.conf
-  lineinfile: dest=/etc/icinga2/constants.conf regexp="^const ZoneName" line="const ZoneName = "{{ icinga2_zonename }}""
+- name: Once again update ZoneName in constants.conf
+  lineinfile: dest=/etc/icinga2/constants.conf regexp="^const ZoneName" line="const ZoneName = "{{ icinga2_master_zone_name }}""
 
 - name: Create directories for each zone
   file: dest=/etc/icinga2/zones.d/{{ item }} state=directory owner=icinga group=icinga mode=0750
   with_items: "{{ groups }}"
   when: item != "satellites" and item != "all" and item != "ungrouped"
 
-- name: Create global-templates zone directory
+- name: Create a directory for global-templates zone 
   file: dest=/etc/icinga2/zones.d/global-templates state=directory owner=icinga group=icinga mode=0750
 
 - shell: mv /etc/icinga2/conf.d/hosts.conf /etc/icinga2/zones.d/master/
@@ -122,9 +127,9 @@
     regexp: 'include_recursive "conf.d"'
     line: '# include_recursive "conf.d"'
 
-
 - name: Create /etc/icinga2/zones.conf
   template: src=zones.conf.j2 dest=/etc/icinga2/zones.conf
 
+# Use handler here
 - name: Restart icinga2 service
   service: name=icinga2 state=restarted

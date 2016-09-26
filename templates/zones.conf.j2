@@ -8,7 +8,7 @@ object Endpoint "{{ hostvars[host].inventory_hostname }}" {
 {%- for host in groups['master'] %}
   {%- set _ = icinga2_endpoints.append(hostvars[host].inventory_hostname) -%}
 {% endfor -%}
-object Zone "master" {
+object Zone "{{ icinga2_master_zone_name }}" {
 	endpoints = [ "{{ "\", \"".join(icinga2_endpoints) }}" ]
 }
 
