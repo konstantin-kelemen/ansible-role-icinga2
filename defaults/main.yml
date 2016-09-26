@@ -1,0 +1,6 @@
+---
+icinga2_db_host: localhost
+icinga2_db_name: icinga2
+icinga2_db_user: icinga2
+icinga2_db_password: iloveicinga
+icinga2_zonename: master

@@ -1,0 +1,130 @@
+---
+- name: Add Icinga2 repository
+  yum: name="https://packages.icinga.org/epel/7/release/noarch/icinga-rpm-release-7-1.el7.centos.noarch.rpm" state=installed
+
+- name: Install packages
+  yum: name={{ item }} state=present
+  with_items:
+  - epel-release
+  - icinga2
+  - nagios-plugins-all
+  - vim-icinga2
+  - nano-icinga2
+  - icinga2-ido-mysql
+  - python-pip
+
+- name: Install pexpect
+  shell: pip install pexpect
+
+- name: Enable syntax highlighting in nano
+  blockinfile:
+    dest: /etc/nanorc
+    block: |
+      ## Icinga 2
+      include "/usr/share/nano/icinga2.nanorc"
+
+- name: Enable icinga2 service
+  service: name=icinga2 state=started enabled=yes
+
+# START: This should be moved away from this role
+- name: Create Icinga2 database
+  mysql_db: name={{ icinga2_db_name }} state=present
+  run_once: true
+  delegate_to: "{{ percona_cluster_bootstrap_hostname }}"
+
+- name: Create Icinga2 user and give him propper privileges (remote)
+  mysql_user:
+    name: "{{ icinga2_db_user }}"
+    password: "{{ icinga2_db_password }}"
+    priv: "{{ icinga2_db_name }}.*:ALL"
+    state: present
+    host: "{{ hostvars[item]['ansible_ssh_host'] }}"
+  with_items: "{{ groups['master'] }}"
+  run_once: true
+  delegate_to: "{{ percona_cluster_bootstrap_hostname }}"
+
+- name: Create Icinga2 user and give him propper privileges (local)
+  mysql_user:
+    name: "{{ icinga2_db_user }}"
+    password: "{{ icinga2_db_password }}"
+    priv: "{{ icinga2_db_name }}.*:ALL"
+    state: present
+  run_once: true
+  delegate_to: "{{ percona_cluster_bootstrap_hostname }}"
+# END: This should be moved away from this role
+
+- name: Import database structure
+  mysql_db:
+    state: import
+    login_user: "{{ icinga2_db_user }}"
+    login_password: "{{ icinga2_db_password }}"
+    login_host: "{{ percona_cluster_bootstrap_hostname }}"
+    name: "{{ icinga2_db_name }}"
+    target: /usr/share/icinga2-ido-mysql/schema/mysql.sql
+  run_once: true
+  delegate_to: "{{ hostvars[groups['master'][0]]['inventory_hostname'] }}"
+
+- name: Enable command feature
+  shell: icinga2 feature enable command
+
+- name: Update NodeName in constants.conf
+  lineinfile: dest=/etc/icinga2/constants.conf regexp="^//const NodeName" line="const NodeName = "{{ inventory_hostname }}""
+
+- name: Update ZoneName in constants.conf
+  lineinfile: dest=/etc/icinga2/constants.conf regexp="^const ZoneName" line="const ZoneName = "{{ icinga2_zonename }}""
+
+- name: Update user in ido-mysql.conf
+  lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^  //user" line="  user = "{{ icinga2_db_user }}""
+
+- name: Update password in ido-mysql.conf
+  lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^  //password" line="  password = "{{ icinga2_db_password }}""
+
+- name: Update host in ido-mysql.conf
+  lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^  //host" line="  host = "{{ percona_cluster_bootstrap_hostname }}""
+
+- name: Update database in ido-mysql.conf
+  lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^  //database" line="  database = "{{ icinga2_db_name }}""
+
+- name: Add enable_ha to ido-mysql.conf
+  lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^const ZoneName" insertafter="  database" line="  enable_ha = false"
+
+- name: Perform a node setup
+  expect:
+    command: icinga2 node wizard
+    responses:
+      Please specify if this is a satellite setup: "n"
+      Please specifiy the common name: "{{ inventory_hostname }}"
+      Bind Host: ""
+      Bind Port: ""
+
+- name: Update ZoneName in constants.conf
+  lineinfile: dest=/etc/icinga2/constants.conf regexp="^const ZoneName" line="const ZoneName = "{{ icinga2_zonename }}""
+
+- name: Create directories for each zone
+  file: dest=/etc/icinga2/zones.d/{{ item }} state=directory owner=icinga group=icinga mode=0750
+  with_items: "{{ groups }}"
+  when: item != "satellites" and item != "all" and item != "ungrouped"
+
+- name: Create global-templates zone directory
+  file: dest=/etc/icinga2/zones.d/global-templates state=directory owner=icinga group=icinga mode=0750
+
+- shell: mv /etc/icinga2/conf.d/hosts.conf /etc/icinga2/zones.d/master/
+#    removes: /etc/icinga2/conf.d/hosts.conf
+#    creates: /etc/icinga2/zones.d/master/hosts.conf
+
+- shell: mv /etc/icinga2/conf.d/* /etc/icinga2/zones.d/global-templates/
+#    removes: /etc/icinga2/conf.d/commands.conf
+#    creates: /etc/icinga2/zones.d/global-templates/commands.conf
+
+- name: Update /etc/icinga2/icinga2.conf
+  lineinfile:
+    dest: /etc/icinga2/icinga2.conf
+    regexp: 'include_recursive "conf.d"'
+    line: '# include_recursive "conf.d"'
+
+
+- name: Create /etc/icinga2/zones.conf
+  template: src=zones.conf.j2 dest=/etc/icinga2/zones.conf
+
+- name: Restart icinga2 service
+  service: name=icinga2 state=restarted
