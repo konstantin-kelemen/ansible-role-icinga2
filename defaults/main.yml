@@ -6,3 +6,4 @@ icinga2_db_name: icinga2
 icinga2_db_user: icinga2
 icinga2_db_password: iloveicinga
 icinga2_master_zone_name: master
+icinga2_api_root_password: apipassword

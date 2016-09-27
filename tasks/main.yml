@@ -75,8 +75,8 @@
 - name: Update NodeName in constants.conf
   lineinfile: dest=/etc/icinga2/constants.conf regexp="^//const NodeName" line="const NodeName = "{{ inventory_hostname }}""
 
-- name: Update ZoneName in constants.conf
-  lineinfile: dest=/etc/icinga2/constants.conf regexp="^const ZoneName" line="const ZoneName = "{{ icinga2_master_zone_name }}""
+#- name: Update ZoneName in constants.conf
+#  lineinfile: dest=/etc/icinga2/constants.conf regexp="^const ZoneName" line="const ZoneName = "{{ icinga2_master_zone_name }}""
 
 - name: Update user in ido-mysql.conf
   lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^  //user" line="  user = "{{ icinga2_db_user }}""
@@ -102,33 +102,36 @@
       Bind Host: ""
       Bind Port: ""
 
-- name: Once again update ZoneName in constants.conf
-  lineinfile: dest=/etc/icinga2/constants.conf regexp="^const ZoneName" line="const ZoneName = "{{ icinga2_master_zone_name }}""
+#- name: Once again update ZoneName in constants.conf
+#  lineinfile: dest=/etc/icinga2/constants.conf regexp="^const ZoneName" line="const ZoneName = "{{ icinga2_master_zone_name }}""
 
-- name: Create directories for each zone
-  file: dest=/etc/icinga2/zones.d/{{ item }} state=directory owner=icinga group=icinga mode=0750
-  with_items: "{{ groups }}"
-  when: item != "satellites" and item != "all" and item != "ungrouped"
+#- name: Create directories for each zone
+#  file: dest=/etc/icinga2/zones.d/{{ item }} state=directory owner=icinga group=icinga mode=0750
+#  with_items: "{{ groups }}"
+#  when: item != "satellites" and item != "all" and item != "ungrouped"
 
-- name: Create a directory for global-templates zone 
-  file: dest=/etc/icinga2/zones.d/global-templates state=directory owner=icinga group=icinga mode=0750
+#- name: Create a directory for global-templates zone 
+#  file: dest=/etc/icinga2/zones.d/global-templates state=directory owner=icinga group=icinga mode=0750
 
-- shell: mv /etc/icinga2/conf.d/hosts.conf /etc/icinga2/zones.d/master/
-#    removes: /etc/icinga2/conf.d/hosts.conf
-#    creates: /etc/icinga2/zones.d/master/hosts.conf
+#- shell: mv /etc/icinga2/conf.d/hosts.conf /etc/icinga2/zones.d/master/
+##    removes: /etc/icinga2/conf.d/hosts.conf
+##    creates: /etc/icinga2/zones.d/master/hosts.conf
 
-- shell: mv /etc/icinga2/conf.d/* /etc/icinga2/zones.d/global-templates/
-#    removes: /etc/icinga2/conf.d/commands.conf
-#    creates: /etc/icinga2/zones.d/global-templates/commands.conf
+#- shell: mv /etc/icinga2/conf.d/* /etc/icinga2/zones.d/global-templates/
+##    removes: /etc/icinga2/conf.d/commands.conf
+##    creates: /etc/icinga2/zones.d/global-templates/commands.conf
 
-- name: Update /etc/icinga2/icinga2.conf
-  lineinfile:
-    dest: /etc/icinga2/icinga2.conf
-    regexp: 'include_recursive "conf.d"'
-    line: '# include_recursive "conf.d"'
+#- name: Update /etc/icinga2/icinga2.conf
+#  lineinfile:
+#    dest: /etc/icinga2/icinga2.conf
+#    regexp: 'include_recursive "conf.d"'
+#    line: '# include_recursive "conf.d"'
 
 - name: Create /etc/icinga2/zones.conf
   template: src=zones.conf.j2 dest=/etc/icinga2/zones.conf
+
+- name: Create /etc/icinga2/conf.d/api-users.conf
+  template: src=conf.d-api-users.conf.j2 dest=/etc/icinga2/conf.d/api-users.conf
 
 # Use handler here
 - name: Restart icinga2 service

@@ -1,21 +1,4 @@
-{% for host in groups['master'] %}
-object Endpoint "{{ hostvars[host].inventory_hostname }}" {
-	host = "{{ hostvars[host].ansible_ssh_host }}"
-}
-{% endfor %}
-
-{% set icinga2_endpoints = [] -%}
-{%- for host in groups['master'] %}
-  {%- set _ = icinga2_endpoints.append(hostvars[host].inventory_hostname) -%}
-{% endfor -%}
-object Zone "{{ icinga2_master_zone_name }}" {
-	endpoints = [ "{{ "\", \"".join(icinga2_endpoints) }}" ]
-}
-
-/*
- * Global zone for templates
- */
-
-object Zone "global-templates" {
-	global = true
+object Endpoint NodeName {}
+object Zone NodeName {
+	endpoints = [ NodeName ]
 }
