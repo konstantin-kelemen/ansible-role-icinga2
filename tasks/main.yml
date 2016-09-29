@@ -91,9 +91,9 @@
   lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^  //database" line="  database = "{{ icinga2_db_name }}""
 
 - name: Add enable_ha to ido-mysql.conf
-  lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^const ZoneName" insertafter="  database" line="  enable_ha = false"
+  lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^const ZoneName" insertafter="  database" line="  enable_ha = true"
 
-- name: Perform a node setup
+- name: Perform a master node setup
   expect:
     command: icinga2 node wizard
     responses:
@@ -101,6 +101,7 @@
       Please specifiy the common name: "{{ inventory_hostname }}"
       Bind Host: ""
       Bind Port: ""
+  run_once: true
 
 #- name: Once again update ZoneName in constants.conf
 #  lineinfile: dest=/etc/icinga2/constants.conf regexp="^const ZoneName" line="const ZoneName = "{{ icinga2_master_zone_name }}""
