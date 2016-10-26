@@ -1,9 +1,21 @@
 ---
 icinga2_mysql_privileged_user: root
 icinga2_mysql_privileged_password: "{{ mysql_root_pass }}"
-icinga2_db_host: localhost
+icinga2_db_host: "{{ groups.percona[0] }}"
 icinga2_db_name: icinga2
 icinga2_db_user: icinga2
-icinga2_db_password: iloveicinga
+icinga2_db_password: iloveicinga2
 icinga2_master_zone_name: master
 icinga2_api_root_password: apipassword
+
+icinga2:
+  mysql:
+    privileged_user: root
+    privileged_password: "{{ mysql_root_pass }}"
+  db:
+    host: "{{ groups.percona[0] }}"
+    name: icinga2
+    user: icinga2
+    password: iloveicinga2
+  master_zone_name: master
+  api_root_password: apipassword

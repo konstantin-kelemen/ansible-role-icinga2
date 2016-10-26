@@ -11,10 +11,18 @@
   - vim-icinga2
   - nano-icinga2
   - icinga2-ido-mysql
+  - mysql
+  - MySQL-python
   - python-pip
 
 - name: Install pexpect
-  shell: pip install pexpect
+  command: pip install pexpect
+  args:
+    warn: False
+    creates: "/usr/lib/python2.7/site-packages/pexpect"
+
+- name: Disable selinux
+  selinux: state=disabled
 
 - name: Enable syntax highlighting in nano
   blockinfile:
@@ -28,18 +36,19 @@
 
 - name: Create Icinga2 database
   mysql_db:
-    login_user: "{{ icinga2_mysql_privileged_user }}"
-    login_password: "{{ icinga2_mysql_privileged_password }}"
-    login_host: "{{ icinga2_db_host }}"
+#    login_user: "{{ icinga2_mysql_privileged_user }}"
+#    login_password: "{{ icinga2_mysql_privileged_password }}"
+#    login_host: "{{ icinga2_db_host }}"
     name: "{{ icinga2_db_name }}"
     state: present
   run_once: true
+  delegate_to: "{{ icinga2_db_host }}"
 
 - name: Create Icinga2 user and give him propper privileges (remote)
   mysql_user:
-    login_user: "{{ icinga2_mysql_privileged_user }}"
-    login_password: "{{ icinga2_mysql_privileged_password }}"
-    login_host: "{{ icinga2_db_host }}"
+#    login_user: "{{ icinga2_mysql_privileged_user }}"
+#    login_password: "{{ icinga2_mysql_privileged_password }}"
+#    login_host: "{{ icinga2_db_host }}"
     name: "{{ icinga2_db_user }}"
     password: "{{ icinga2_db_password }}"
     priv: "{{ icinga2_db_name }}.*:ALL"
@@ -47,17 +56,20 @@
     state: present
   with_items: "{{ groups['master'] }}"
   run_once: true
+  delegate_to: "{{ icinga2_db_host }}"
 
 - name: Create Icinga2 user and give him propper privileges (local)
   mysql_user:
-    login_user: "{{ icinga2_mysql_privileged_user }}"
-    login_password: "{{ icinga2_mysql_privileged_password }}"
-    login_host: "{{ icinga2_db_host }}"
+#    login_user: "{{ icinga2_mysql_privileged_user }}"
+#    login_password: "{{ icinga2_mysql_privileged_password }}"
+#    login_host: "{{ icinga2_db_host }}"
     name: "{{ icinga2_db_user }}"
     password: "{{ icinga2_db_password }}"
     priv: "{{ icinga2_db_name }}.*:ALL"
     state: present
   run_once: true
+  delegate_to: "{{ icinga2_db_host }}"
+
 
 - name: Import "{{ icinga2_db_name }}" database structure
   mysql_db:
@@ -70,13 +82,13 @@
   run_once: true
 
 - name: Enable command feature
-  shell: icinga2 feature enable command
+  command: icinga2 feature enable command
+  args:
+    warn: False
+    creates: "/etc/icinga2/features-enabled/command.conf"
 
 - name: Update NodeName in constants.conf
   lineinfile: dest=/etc/icinga2/constants.conf regexp="^//const NodeName" line="const NodeName = "{{ inventory_hostname }}""
-
-#- name: Update ZoneName in constants.conf
-#  lineinfile: dest=/etc/icinga2/constants.conf regexp="^const ZoneName" line="const ZoneName = "{{ icinga2_master_zone_name }}""
 
 - name: Update user in ido-mysql.conf
   lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^  //user" line="  user = "{{ icinga2_db_user }}""
@@ -85,7 +97,7 @@
   lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^  //password" line="  password = "{{ icinga2_db_password }}""
 
 - name: Update host in ido-mysql.conf
-  lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^  //host" line="  host = "{{ percona_cluster_bootstrap_hostname }}""
+  lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^  //host" line="  host = "{{ icinga2_db_host }}""
 
 - name: Update database in ido-mysql.conf
   lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^  //database" line="  database = "{{ icinga2_db_name }}""
@@ -93,25 +105,70 @@
 - name: Add enable_ha to ido-mysql.conf
   lineinfile: dest=/etc/icinga2/features-enabled/ido-mysql.conf regexp="^const ZoneName" insertafter="  database" line="  enable_ha = true"
 
-- name: Perform a master node setup
+- name: Perform a first master node setup
   expect:
     command: icinga2 node wizard
     responses:
       Please specify if this is a satellite setup: "n"
+      Please specify the common name: "{{ inventory_hostname }}"
+      # This line is for backwards compatibility due to a typo in the prompt.
       Please specifiy the common name: "{{ inventory_hostname }}"
       Bind Host: ""
       Bind Port: ""
   run_once: true
+  delegate_to: "{{ groups.master[0] }}"
 
-#- name: Once again update ZoneName in constants.conf
-#  lineinfile: dest=/etc/icinga2/constants.conf regexp="^const ZoneName" line="const ZoneName = "{{ icinga2_master_zone_name }}""
+- name: Generate /etc/icinga2/zones.conf on first master
+  template: src=zones-first-master.conf.j2 dest=/etc/icinga2/zones.conf
+  run_once: true
+
+- name: Restart icinga2 service
+  service: name=icinga2 state=restarted
+  run_once: true
+
+- name: Generate a ticket for the second master
+  command: icinga2 pki ticket --cn '{{ groups.master[1] }}'
+  register: icinga2_second_master_ticket
+  run_once: true
+  delegate_to: "{{ groups.master[0] }}"
+  args:
+    warn: False
+  tags:
+  - skip_ansible_lint
+
+- name: Perform a second master node setup
+  expect:
+    command: icinga2 node wizard
+    responses:
+      Please specify if this is a satellite setup: ""
+      Please specify the common name: ""
+      # This line is for backwards compatibility due to a typo in the prompt.
+      Please specifiy the common name: ""
+      Master Common Name: "{{ groups.master[0] }}"
+      Do you want to establish a connection to the master: ""
+      Master endpoint host: "{{ groups.master[0] }}"
+      Master endpoint port: ""
+      Add more master endpoints: ""
+      Host: ""
+      Port: ""
+      Is this information correct: "y"
+      Hint: "{{ icinga2_second_master_ticket.stdout }}"
+      Bind Host: ""
+      Bind Port: ""
+      Accept config from master: "y"
+      Accept commands from master: "y"
+  run_once: true
+  delegate_to: "{{ groups.master[1] }}"
+
+- name: Update ZoneName in constants.conf
+  lineinfile: dest=/etc/icinga2/constants.conf regexp="^const ZoneName" line="const ZoneName = "{{ icinga2_master_zone_name }}""
 
 #- name: Create directories for each zone
 #  file: dest=/etc/icinga2/zones.d/{{ item }} state=directory owner=icinga group=icinga mode=0750
 #  with_items: "{{ groups }}"
 #  when: item != "satellites" and item != "all" and item != "ungrouped"
 
-#- name: Create a directory for global-templates zone 
+#- name: Create a directory for global-templates zone
 #  file: dest=/etc/icinga2/zones.d/global-templates state=directory owner=icinga group=icinga mode=0750
 
 #- shell: mv /etc/icinga2/conf.d/hosts.conf /etc/icinga2/zones.d/master/
@@ -128,8 +185,10 @@
 #    regexp: 'include_recursive "conf.d"'
 #    line: '# include_recursive "conf.d"'
 
-- name: Create /etc/icinga2/zones.conf
-  template: src=zones.conf.j2 dest=/etc/icinga2/zones.conf
+- name: Generate /etc/icinga2/zones.conf on second master
+  template: src=zones-second-master.conf.j2 dest=/etc/icinga2/zones.conf
+  run_once: true
+  delegate_to: "{{ groups.master[1] }}"
 
 - name: Create /etc/icinga2/conf.d/api-users.conf
   template: src=conf.d-api-users.conf.j2 dest=/etc/icinga2/conf.d/api-users.conf

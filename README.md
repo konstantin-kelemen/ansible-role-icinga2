@@ -1,7 +1,7 @@
-Role Name
+icinga2-master
 =========
 
-A brief description of the role goes here.
+Installs an HA icinga2 cluster with master zone and a number of satellite zones.
 
 Requirements
 ------------
@@ -35,4 +35,5 @@ BSD
 Author Information
 ------------------
 
-An optional section for the role authors to include contact information, or a website (HTML is not allowed).
+Please reach me by email konstantin@kel.mn
+I also have a website: https://kel.mn
